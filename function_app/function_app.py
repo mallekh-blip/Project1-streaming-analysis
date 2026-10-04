@@ -1,8 +1,11 @@
 """
 Azure Function: IoT sensor data generator for Project 1.
 
-Every 30 seconds it inserts 160 readings (20 devices x 8 readings) into
+Once a minute it inserts 320 readings (20 devices x 16 readings) into
 stream.fact_event_stream, i.e. ~320 records per minute.
+
+A second timer (`analyze`, also once a minute) then runs the outlier detector
+and the online forecaster; see analytics_core.py.
 
 Each device has a FIXED type and city, and its readings follow a realistic
 pattern (city baseline + daily cycle + noise). About 2% of readings are
@@ -26,8 +29,8 @@ app = func.FunctionApp()
 # Configuration
 # ---------------------------------------------------------------------------
 
-READINGS_PER_DEVICE = 8      # per run -> 20 devices x 8 = 160 rows per run
-WINDOW_SECONDS = 30          # readings are spread across the 30 s between runs
+READINGS_PER_DEVICE = 16     # per run -> 20 devices x 16 = 320 rows per run
+WINDOW_SECONDS = 60          # readings are spread across the 60 s between runs
 ANOMALY_RATE = 0.02          # ~2% of readings are injected anomalies
 
 DEVICE_TYPES = ["thermometer", "barometer", "hygrometer", "anemometer"]
@@ -180,10 +183,10 @@ def ensure_dimensions(cur):
 
 
 # ---------------------------------------------------------------------------
-# Timer trigger: runs every 30 seconds
+# Timer trigger: generator runs once a minute, at second 0
 # ---------------------------------------------------------------------------
 
-@app.timer_trigger(schedule="*/30 * * * * *", arg_name="myTimer",
+@app.timer_trigger(schedule="0 * * * * *", arg_name="myTimer",
                    run_on_startup=False, use_monitor=False)
 def generatedata(myTimer: func.TimerRequest) -> None:
     if myTimer.past_due:
@@ -218,5 +221,24 @@ def generatedata(myTimer: func.TimerRequest) -> None:
             )
         injected = sum(r["is_injected"] for r in readings)
         logging.info("Inserted %d readings (%d injected anomalies)", len(rows), injected)
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Timer trigger: outlier detection + online ML, once a minute at second 30
+# (after the generator's insert, so new rows are scored within the minute)
+# ---------------------------------------------------------------------------
+
+@app.timer_trigger(schedule="30 * * * * *", arg_name="analysisTimer",
+                   run_on_startup=False, use_monitor=False)
+def analyze(analysisTimer: func.TimerRequest) -> None:
+    # Imported here so a problem in the analytics code (for example the River
+    # library) can never stop the generator above from starting.
+    import analytics_core
+
+    conn = psycopg2.connect(**get_db_config())
+    try:
+        analytics_core.run_analysis(conn)
     finally:
         conn.close()
