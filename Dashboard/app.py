@@ -128,7 +128,9 @@ ORDER BY f.ts
 
 BY_TYPE_SQL = """
 SELECT date_trunc('minute', f.ts) AS minute, d.device_type,
-       AVG(f.reading_value::float8) FILTER (WHERE NOT f.is_flagged) AS avg_value
+       AVG(f.reading_value::float8)
+           FILTER (WHERE f.scored AND NOT f.is_flagged
+                   AND f.status IS DISTINCT FROM 'error')               AS avg_value
 FROM stream.fact_event_stream f
 JOIN stream.dim_device d ON d.device_id = f.device_id
 WHERE f.ts > NOW() - make_interval(mins => %s)
@@ -346,7 +348,10 @@ def render():
     # --- KPIs ---------------------------------------------------------------
     c = st.columns(5)
     c[0].metric("Events in window", f"{events:,}")
-    c[1].metric("Events in last minute", f"{int(k['last_minute']):,}")
+    c[1].metric("Events in last minute", f"{int(k['last_minute']):,}",
+                help="Rolling last 60 seconds of event time. The generator inserts a batch "
+                     "of 320 readings each minute, so this can read lower between batches. "
+                     "See the throughput chart for the per-minute rate.")
     c[2].metric("Active devices (2 min)", int(k["active_devices"]))
     c[3].metric("Rule-based alerts", f"{int(k['alerts']):,}",
                 help="Readings outside the fixed thresholds set in the generator")
@@ -388,7 +393,8 @@ def render():
         by_type = query(BY_TYPE_SQL, (window_min,))
         if not by_type.empty:
             st.plotly_chart(by_type_chart(by_type))
-        st.caption("Flagged outliers are excluded from these averages.")
+        st.caption("Flagged outliers, sensor faults (-999) and not-yet-scored readings are "
+                   "excluded from these averages.")
     with right:
         st.subheader("Detected vs injected anomalies per minute")
         outliers = query(OUTLIERS_SQL, (window_min,))
