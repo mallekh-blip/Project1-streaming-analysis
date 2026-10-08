@@ -135,7 +135,7 @@ def main():
             f"{arrived} rows arrived in {elapsed:.0f} s, which is **{live_rate:.0f} rows/min**.", "",
             "`ts` is the event time stamped by the generator, so the per-minute table counts "
             "readings per minute of event time. The live sample measures actual arrival at the database.", ""]
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "throughput_report.md")
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "throughput_report.md")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(out))

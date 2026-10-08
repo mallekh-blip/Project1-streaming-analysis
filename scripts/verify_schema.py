@@ -181,7 +181,7 @@ def main():
     lines += ["## Integrity checks (0 is good)", "",
               md_table(["Check", "Result"], integrity), ""]
 
-    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
+    out_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "schema_report.md")
     with open(path, "w", encoding="utf-8") as f:

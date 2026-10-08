@@ -1,6 +1,37 @@
 # Project 1: Streaming Analytics Pipeline on Azure
 
-IoT sensor readings are generated, stored in Azure PostgreSQL, checked for outliers, used to train an online forecasting model, and shown on a live dashboard.
+IoT sensor readings are generated, stored in Azure PostgreSQL, checked for outliers, used to train an online forecasting model, and shown on a live dashboard. Everything runs in the cloud on Azure.
+
+**Live dashboard:** https://project1-dashboard-suny-d7ejbycagrczd0ee.canadacentral-01.azurewebsites.net (may be taken down after grading to avoid cost)
+
+**Course:** Big Data & Analytics, Project 1.
+
+**Tech stack:** Azure Database for PostgreSQL (Flexible Server), Azure Functions (Python, timer triggers), Azure App Service, GitHub Actions, River (online ML), Streamlit and Plotly.
+
+## Key results
+
+| Measure | Result |
+|---|---|
+| Ingestion rate | 320 records/min (359 of 359 complete minutes above 100/min, no gaps) |
+| Data volume | about 1.8 million readings over about 3.9 days (513 MB) |
+| Schema | 5 tables, primary and foreign keys verified, 0 integrity violations |
+| Outlier detector | recall 100%, precision about 96 to 97% against injected anomalies |
+| Online model | about 26% lower error than the naive baseline (MAE about 1.2) |
+| Cloud cost | under $0.01 |
+
+Full evidence: [`docs/schema_report.md`](docs/schema_report.md) and [`docs/throughput_report.md`](docs/throughput_report.md).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    G["Azure Function<br/>generatedata<br/>every minute, :00"] -->|320 readings| DB[("Azure PostgreSQL<br/>schema: stream")]
+    A["Azure Function<br/>analyze<br/>every minute, :30"] <-->|"read new rows,<br/>write flags + predictions"| DB
+    DB -->|live queries| D["Streamlit dashboard<br/>Azure Web App"]
+    GH["GitHub Actions"] -.->|deploys| D
+```
+
+The same flow in text:
 
 ```
 Azure Function (timer, every minute)
@@ -13,14 +44,28 @@ Azure Function (timer, every minute)
 Azure Web App (Streamlit dashboard, auto-refresh)
 ```
 
+## Repository layout
+
+```
+README.md
+function_app/    Azure Functions: generator + analyzer (deployed from VS Code)
+Dashboard/       Streamlit dashboard (deployed to Azure Web App by GitHub Actions)
+database/        create_schema.py
+scripts/         verify_schema.py, measure_throughput.py, check_data.py, check_analytics.py, test_connection.py
+analytics/       local copies of the detector and model (the Azure function runs the same logic)
+docs/            schema_report.md, throughput_report.md
+.github/         GitHub Actions workflow for the dashboard
+requirements.txt
+```
+
 ## Components
 
 | Part | Location | Runs on |
 |---|---|---|
-| Schema creation | `create_schema.py` | once, locally |
+| Schema creation | `database/create_schema.py` | once, locally |
 | Generator + analyzer | `function_app/function_app.py`, `function_app/analytics_core.py` | Azure Functions (Python v2, timer triggers) |
 | Dashboard | `Dashboard/app.py` | Azure App Service (deployed by GitHub Actions) |
-| Verification | `verify_schema.py`, `measure_throughput.py`, `check_data.py`, `check_analytics.py` | locally, read-only against the DB |
+| Verification | `scripts/verify_schema.py`, `scripts/measure_throughput.py`, `scripts/check_data.py`, `scripts/check_analytics.py` | locally, read-only against the DB |
 
 ## Database schema (schema `stream`)
 
@@ -90,20 +135,36 @@ Indexes: `idx_fact_ts`, `idx_fact_device`, `idx_fact_unscored` (partial, on unsc
 - **Outlier detection**: per-device robust z-score, `z = 0.6745 (x - median) / MAD`, flag if `|z| > 3.5`. Baseline is the device's last 300 clean readings. Observed precision about 0.96-0.97, recall 1.00 against `is_injected`.
 - **Online ML**: River `StandardScaler | LinearRegression` per device, predicting the change from the last value. Evaluated prequentially (predict first, then learn). Flagged and error readings are excluded from training. Compared with a naive (last value) and an exponentially weighted baseline.
 
+## Design choices
+
+- **Star-style schema:** two small dimension tables (devices, cities) and one fact table keep the readings compact and the dashboard queries simple. Indexes on time, device and unscored rows keep the detector fast.
+- **Timer-triggered Azure Functions:** serverless, cheap, and they keep the pipeline running without any machine of ours.
+- **Robust z-score (median and MAD):** not distorted by the outliers it is trying to find, so it suits a noisy stream.
+- **Online linear model per device (River):** learns one reading at a time with no retraining step, and its state is saved in the database so it survives between function runs.
+- **Ground-truth labels:** the generator marks the anomalies it injects, so the detector can be evaluated honestly. The detector never reads the label.
+
+## Limitations
+
+- The data is simulated, not from real devices.
+- The forecasting model is a simple linear one. An exponentially weighted average baseline performed slightly better than it in our offline comparison.
+- The fact table holds both readings and analytics flags, and some columns are repeated across tables. This favors simple, fast reads over strict normalization.
+- No retention policy or partitioning. The table grows by about 130 MB a day.
+- Free and low-cost Azure tiers (Burstable database, Free App Service) are sufficient for the project but not for production load.
+
 ## Setup
 
 1. Create an Azure PostgreSQL Flexible Server and allow your client IP (and "Allow public access from any Azure service") under Networking.
-2. Copy `.env.example` to `.env` and fill in `DATABASE_HOST`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_PORT`.
-3. `pip install -r requirements.txt`, then `python create_schema.py`.
+2. Create a file named `.env` in the project root with `DATABASE_HOST`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_PORT`.
+3. `pip install -r requirements.txt`, then `python database/create_schema.py`.
 4. Deploy `function_app/` to an Azure Function App (same DATABASE_* values as Application Settings).
 5. Deploy `Dashboard/` to an App Service (same values as environment variables). The GitHub Actions workflow does this on every push to `Dashboard/`.
 
 ## Verifying
 
 ```
-python verify_schema.py          # tables, PK/FK/unique checks, integrity -> docs/schema_report.md
-python measure_throughput.py 6 120   # per-minute counts (last 6 h) + 120 s live sample -> docs/throughput_report.md
-python check_analytics.py        # detector and model health
+python scripts/verify_schema.py          # tables, PK/FK/unique checks, integrity -> docs/schema_report.md
+python scripts/measure_throughput.py 6 120   # per-minute counts (last 6 h) + 120 s live sample -> docs/throughput_report.md
+python scripts/check_analytics.py        # detector and model health
 ```
 
 Never commit `.env`. Credentials belong in Application Settings on Azure.
