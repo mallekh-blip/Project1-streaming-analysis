@@ -1,18 +1,18 @@
 # Ingestion throughput report
 
-Generated 2026-10-07 19:44 UTC by `measure_throughput.py` directly from the database.
+Generated 2026-10-08 00:51 UTC by `measure_throughput.py` directly from the database.
 
-- Table `stream.fact_event_stream`: 1,801,280 rows, 513 MB
-- Data from 2026-10-03 21:51 to 2026-10-07 19:41 UTC
+- Table `stream.fact_event_stream`: 1,899,520 rows, 521 MB
+- Data from 2026-10-03 21:51 to 2026-10-08 00:48 UTC
 
 ## Per-minute counts, last 6 hours (359 complete minutes)
 
 | Metric | Value |
 |---|---|
-| Average rows/min | 320.0 |
+| Average rows/min | 319.9 |
 | Median | 320 |
 | Min / Max | 300 / 340 |
-| Std. deviation | 8.6 |
+| Std. deviation | 8.5 |
 | Minutes at or above 100/min | 359 of 359 |
 | Minutes with no data | 0 |
 

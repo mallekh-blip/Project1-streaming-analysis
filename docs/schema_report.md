@@ -1,6 +1,6 @@
 # Schema verification report
 
-Generated 2026-10-08 00:25 UTC by `verify_schema.py` from the live Azure PostgreSQL database.
+Generated 2026-10-08 00:48 UTC by `verify_schema.py` from the live Azure PostgreSQL database.
 
 ## Tables and row counts
 
@@ -8,8 +8,8 @@ Generated 2026-10-08 00:25 UTC by `verify_schema.py` from the live Azure Postgre
 |---|---|---|
 | dim_device | 20 | 3 |
 | dim_location | 5 | 3 |
-| fact_event_stream | 1,891,840 | 10 |
-| ml_predictions | 1,852,643 | 6 |
+| fact_event_stream | 1,899,200 | 10 |
+| ml_predictions | 1,859,867 | 6 |
 | ml_state | 1 | 4 |
 
 ## stream.dim_device
